@@ -1,15 +1,13 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Response, Request
 from sqlalchemy.orm import Session
-
 import crud
 import schemas
-
 from database import Base, engine, SessionLocal
+from auth import authorize_user
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
-
 
 def get_db():
     db = SessionLocal()
@@ -18,60 +16,53 @@ def get_db():
     finally:
         db.close()
 
-
 @app.get("/")
 def welcome():
-    return "Welcome to Product Management API"
-
-
-@app.post("/products", response_model=schemas.ProductResponse)
-def create(product: schemas.ProductCreate, db: Session = Depends(get_db)):
-    return crud.create_product(db, product)
-
+    return "welcome to the Store"
 
 @app.get("/products", response_model=list[schemas.ProductResponse])
-def read_all(db: Session = Depends(get_db)):
-    return crud.get_products(db)
-
+def get_all_products(request: Request, db: Session = Depends(get_db)):
+    authorize_user(request, required_role=["admin"])  # Only admins can access this endpoint
+    return crud.get_all_products(db)
 
 @app.get("/products/{product_id}", response_model=schemas.ProductResponse)
-def read_one(product_id: int, db: Session = Depends(get_db)):
-    product = crud.get_product(db, product_id)
-
-    if not product:
+def get_product(product_id: int,request: Request, db: Session = Depends(get_db)):
+    db_product = crud.get_product(db, product_id=product_id)
+    authorize_user(request, required_role=["admin","worker"])  # Only workers can access this endpoint
+    if not db_product:
         raise HTTPException(status_code=404, detail="Product not found")
-
-    return product
-
+    return db_product
 
 @app.put("/products/{product_id}", response_model=schemas.ProductResponse)
-def update(product_id: int, product: schemas.ProductCreate, db: Session = Depends(get_db)):
-    updated = crud.update_product(db, product_id, product)
-
-    if not updated:
+def update_product(product_id: int, updated_product: schemas.ProductCreate, request: Request, db: Session = Depends(get_db)):
+    db_product = crud.update_product(db, product_id=product_id, updated_product=updated_product)
+    authorize_user(request, required_role=["admin", "store manager"])  # Only admins and store managers can access this endpoint
+    if not db_product:
         raise HTTPException(status_code=404, detail="Product not found")
+    return db_product
 
-    return updated
-
-
-@app.delete("/products/{product_id}")
-def delete(product_id: int, db: Session = Depends(get_db)):
-    deleted = crud.delete_product(db, product_id)
-
-    if not deleted:
+@app.delete("/products/{product_id}", response_model=schemas.ProductResponse)
+def delete_product(product_id: int, request: Request, db: Session = Depends(get_db)):
+    db_product = crud.delete_product(db, product_id=product_id)
+    authorize_user(request, required_role=["admin"])  # Only admins can access this endpoint
+    if not db_product:
         raise HTTPException(status_code=404, detail="Product not found")
+    return db_product
 
-    return {"message": "Product deleted successfully"}
+@app.get("/category/{category}", response_model=list[schemas.ProductResponse])
+def get_products_by_category(category: str, request: Request, db: Session = Depends(get_db)):
+    authorize_user(request, required_role=["worker","admin"])  # Only workers can access this endpoint
+    return crud.get_products_by_category(db, category=category)
 
+@app.post("/products", response_model=schemas.ProductResponse)
+def create_product(product: schemas.ProductCreate, request: Request, db: Session = Depends(get_db)):
+    authorize_user(request, required_role=["admin","store manager"])  # Only admins and store managers can access this endpoint
+    return crud.create_product(db, product)
 
-@app.get("/category/{category}")
-def products_by_category(category: str, db: Session = Depends(get_db)):
-    products = crud.get_by_category(db, category)
+@app.post("/register_user")
+def user_register(user: schemas.UserCreate, db : Session = Depends(get_db)):
+    return crud.user_register(db, user) # it is step is used to register the new user based given details
 
-    if not products:
-        raise HTTPException(
-            status_code=404,
-            detail="No products found in this category"
-        )
-
-    return products
+@app.post("/login_user")
+def user_login(user: schemas.Userlogin, db:Session = Depends(get_db), response: Response = None):
+    return crud.user_login(db, user, response)

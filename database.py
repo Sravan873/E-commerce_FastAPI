@@ -1,8 +1,10 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker,declarative_base
+import os
 
-DATABASE_URL="mysql+pymysql://root:Sravan%400421@localhost:3306/E_commerce"
-
+from dotenv import load_dotenv
+load_dotenv ()
+DATABASE_URL= os.getenv("Db")
 engine = create_engine(DATABASE_URL)
 
 SessionLocal = sessionmaker(
